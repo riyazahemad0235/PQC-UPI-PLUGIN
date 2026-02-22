@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Shield, 
   Cpu, 
@@ -17,65 +17,98 @@ import {
   Camera,
   User,
   X,
-  Keyboard
+  Keyboard,
+  Fingerprint,
+  History,
+  ShieldCheck,
+  ShieldAlert,
+  ChevronRight,
+  LockKeyhole,
+  Activity,
+  ArrowLeftRight,
+  Skull
 } from 'lucide-react';
 
-const usePQCPlugin = () => {
+// --- PQC Simulation Hook ---
+const usePQCEngine = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [progress, setProgress] = useState(0);
 
-  const addLog = (message, type = 'info') => {
-    setLogs(prev => [{ id: Date.now(), message, type, time: new Date().toLocaleTimeString() }, ...prev]);
+  const addLog = (message, type = 'info', meta = '') => {
+    setLogs(prev => [
+      { id: Math.random(), message, type, meta, time: new Date().toLocaleTimeString() },
+      ...prev
+    ]);
   };
 
-  const processPayment = async (amount, recipient) => {
+  const processTransaction = async (amount, recipient) => {
     setIsProcessing(true);
     setLogs([]);
+    setProgress(0);
     
-    addLog(`Initiating Secure Tunnel to ${recipient}...`, "info");
-    await new Promise(r => setTimeout(r, 600));
-    
-    addLog("PQC Hybrid SDK Triggered", "success");
-    await new Promise(r => setTimeout(r, 600));
-    
-    addLog("Generating Classical Signature (ECDSA)...", "info");
-    await new Promise(r => setTimeout(r, 700));
-    
-    addLog("Generating Quantum Signature (ML-DSA/Dilithium)...", "info");
-    await new Promise(r => setTimeout(r, 900));
-    
-    addLog("Hybrid Payload Encapsulated (Kyber)...", "success");
-    await new Promise(r => setTimeout(r, 500));
+    const steps = [
+      { msg: "Establishing Quantum-Resistant Tunnel...", type: "info", meta: "Kyber-768", delay: 800 },
+      { msg: "Handshake: ML-KEM Encapsulation successful", type: "success", meta: "Shared Secret Derived", delay: 600 },
+      { msg: "Computing Classical Hash (SHA-256)...", type: "info", meta: "Standard Digest", delay: 500 },
+      { msg: "Signing: ECDSA r|s pair generated", type: "info", meta: "Legacy Node Compatibility", delay: 700 },
+      { msg: "Signing: ML-DSA-65 (Dilithium) Signature...", type: "info", meta: "Lattice-based security", delay: 1000 },
+      { msg: "Hybrid Payload Bundled", type: "success", meta: "Ready for transmission", delay: 400 },
+      { msg: "Relaying to NPCI PQC Gateway...", type: "info", meta: "Encrypted via AES-256-GCM", delay: 1200 },
+      { msg: "Gateway: Hybrid Verification PASSED", type: "success", meta: "Dilithium L3 Validated", delay: 600 }
+    ];
 
-    addLog("Transmitting to Payment Gateway...", "info");
-    await new Promise(r => setTimeout(r, 1000));
-    
-    addLog("Gateway: Verifying Classical Signature...", "info");
-    await new Promise(r => setTimeout(r, 600));
-    
-    addLog("Gateway: Verifying PQC Signature...", "info");
-    await new Promise(r => setTimeout(r, 400));
-    
-    addLog("Fail-Forward Policy: VALIDATED", "success");
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      addLog(step.msg, step.type, step.meta);
+      setProgress(((i + 1) / steps.length) * 100);
+      await new Promise(r => setTimeout(r, step.delay));
+    }
+
     setIsProcessing(false);
     return true;
   };
 
-  return { processPayment, isProcessing, logs };
+  return { processTransaction, isProcessing, logs, progress };
+};
+
+// --- Components ---
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-slate-900/50 backdrop-blur-md border border-slate-800 rounded-3xl overflow-hidden ${className}`}>
+    {children}
+  </div>
+);
+
+const Badge = ({ children, color = "indigo" }) => {
+  const colors = {
+    indigo: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+    green: "bg-green-500/10 text-green-400 border-green-500/20",
+    purple: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+    amber: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    red: "bg-red-500/10 text-red-400 border-red-500/20",
+  };
+  return (
+    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${colors[color]}`}>
+      {children}
+    </span>
+  );
 };
 
 export default function App() {
-  const [view, setView] = useState('dashboard');
-  const { processPayment, isProcessing, logs } = usePQCPlugin();
-  const [paymentStep, setPaymentStep] = useState(0);
+  const [view, setView] = useState('dashboard'); // dashboard, payment, vault, success
+  const { processTransaction, isProcessing, logs, progress } = usePQCEngine();
+  const [paymentStep, setPaymentStep] = useState(0); // 0: Start, 1: Scan/ID, 2: Amount, 3: Auth, 4: Signing
   const [method, setMethod] = useState(null);
   const [upiId, setUpiId] = useState('');
   const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('500.00');
+  const [amount, setAmount] = useState('1250.00');
+  const [showComparison, setShowComparison] = useState(false);
 
   const startPayment = (type) => {
     setMethod(type);
     setPaymentStep(1);
+    setView('payment');
   };
 
   const handleIdSubmit = (e) => {
@@ -87,14 +120,20 @@ export default function App() {
   };
 
   const handleScanSuccess = () => {
-    setRecipient("Merchant_QR_7721");
+    setRecipient("QuantumStore@ybl");
     setPaymentStep(2);
   };
 
-  const handlePay = async () => {
-    setPaymentStep(3);
-    const success = await processPayment(amount, recipient);
-    if (success) setPaymentStep(4);
+  const handleAuthSuccess = () => {
+    setPaymentStep(4);
+    handleExecutePayment();
+  };
+
+  const handleExecutePayment = async () => {
+    const success = await processTransaction(amount, recipient);
+    if (success) {
+      setTimeout(() => setView('success'), 500);
+    }
   };
 
   const resetFlow = () => {
@@ -104,305 +143,593 @@ export default function App() {
     setView('dashboard');
   };
 
-  const renderDashboard = () => (
-    <div className="space-y-12 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900 border border-indigo-500/30 p-6 rounded-2xl shadow-xl hover:shadow-indigo-500/10 transition-all">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-indigo-500/20 rounded-lg">
-              <Shield className="w-6 h-6 text-indigo-400" />
-            </div>
-            <h3 className="font-semibold text-white">Security Status</h3>
-          </div>
-          <p className="text-3xl font-bold text-green-400">Quantum-Safe</p>
-          <p className="text-slate-400 text-sm mt-2">Hybrid Dilithium + ECDSA Active</p>
+  // --- Views ---
+
+  const Dashboard = () => (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Quantum Shield</h1>
+          <p className="text-slate-400 mt-1">Your payments are protected against harvest-now-decrypt-later attacks.</p>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-cyan-500/20 rounded-lg">
-              <RefreshCcw className="w-6 h-6 text-cyan-400" />
+        <Badge color="green">Network Safe</Badge>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-6 border-indigo-500/20 bg-indigo-500/5">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2 bg-indigo-500/20 rounded-xl">
+              <ShieldCheck className="w-6 h-6 text-indigo-400" />
             </div>
-            <h3 className="font-semibold text-white">Crypto Agility</h3>
+            <Badge color="indigo">Active</Badge>
           </div>
-          <p className="text-3xl font-bold text-white">Level 4</p>
-          <p className="text-slate-400 text-sm mt-2">NIST Round 3 Standards</p>
-        </div>
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <Zap className="w-6 h-6 text-purple-400" />
+          <p className="text-sm text-slate-400 font-medium">Security Standard</p>
+          <p className="text-xl font-bold text-white">FIPS 203 & 204</p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2 bg-purple-500/20 rounded-xl">
+              <LockKeyhole className="w-6 h-6 text-purple-400" />
             </div>
-            <h3 className="font-semibold text-white">Latency</h3>
+            <Badge color="purple">ML-DSA</Badge>
           </div>
-          <p className="text-3xl font-bold text-white">+12ms</p>
-          <p className="text-slate-400 text-sm mt-2">Optimized for Mobile SDK</p>
-        </div>
+          <p className="text-sm text-slate-400 font-medium">Signing Layer</p>
+          <p className="text-xl font-bold text-white">Dilithium-L3</p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2 bg-amber-500/20 rounded-xl">
+              <Activity className="w-6 h-6 text-amber-400" />
+            </div>
+            <Badge color="amber">Optimized</Badge>
+          </div>
+          <p className="text-sm text-slate-400 font-medium">Avg. Overhead</p>
+          <p className="text-xl font-bold text-white">+14.2ms</p>
+        </Card>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl p-8 text-center flex flex-col items-center">
-        <div className="w-20 h-20 bg-indigo-600/20 rounded-2xl flex items-center justify-center mb-6">
-          <Smartphone className="w-10 h-10 text-indigo-400" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="flex flex-col gap-4">
+          <h2 className="text-lg font-bold text-white px-1">Quick Pay</h2>
+          <button 
+            onClick={() => startPayment('scan')}
+            className="flex items-center justify-between p-6 bg-slate-900 border border-slate-800 rounded-3xl hover:border-indigo-500/50 transition-all group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-indigo-500/10 rounded-2xl group-hover:bg-indigo-500/20 transition-colors">
+                <QrCode className="w-8 h-8 text-indigo-400" />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-white">Scan Merchant QR</p>
+                <p className="text-sm text-slate-500">Fast & Secure Transaction</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-600 group-hover:translate-x-1 transition-transform" />
+          </button>
+
+          <button 
+            onClick={() => startPayment('id')}
+            className="flex items-center justify-between p-6 bg-slate-900 border border-slate-800 rounded-3xl hover:border-purple-500/50 transition-all group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-purple-500/10 rounded-2xl group-hover:bg-purple-500/20 transition-colors">
+                <Keyboard className="w-8 h-8 text-purple-400" />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-white">Pay via UPI ID</p>
+                <p className="text-sm text-slate-500">Manual entry for peer transfer</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-600 group-hover:translate-x-1 transition-transform" />
+          </button>
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2">PQC-Secured Gateway</h2>
-        <p className="text-slate-400 max-w-sm mb-8">Initiate a payment using quantum-resilient signatures to protect against "Harvest Now, Decrypt Later" attacks.</p>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
-           <button 
-             onClick={() => { setView('payment'); startPayment('scan'); }}
-             className="flex flex-col items-center gap-3 p-6 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl transition-all group"
-           >
-             <QrCode className="w-8 h-8 text-indigo-400 group-hover:scale-110 transition-transform" />
-             <span className="font-bold text-white">Scan QR Code</span>
-           </button>
-           <button 
-             onClick={() => { setView('payment'); startPayment('id'); }}
-             className="flex flex-col items-center gap-3 p-6 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl transition-all group"
-           >
-             <Keyboard className="w-8 h-8 text-purple-400 group-hover:scale-110 transition-transform" />
-             <span className="font-bold text-white">Enter UPI ID</span>
-           </button>
+
+        <div className="flex flex-col gap-4">
+          <h2 className="text-lg font-bold text-white px-1">Security Health</h2>
+          <Card className="p-8 flex-1 flex flex-col justify-center items-center text-center">
+            <div className="relative mb-6">
+              <Shield className="w-20 h-20 text-indigo-500/20 fill-indigo-500/5" />
+              <ShieldCheck className="w-12 h-12 text-indigo-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Agile Cryptography</h3>
+            <p className="text-slate-400 text-sm max-w-xs leading-relaxed">
+              Your device has registered a <strong>Quantum-Ready</strong> hardware security module. 
+            </p>
+            <button 
+              onClick={() => setView('vault')}
+              className="mt-6 px-6 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-sm font-bold transition-all border border-indigo-500/20"
+            >
+              Learn More
+            </button>
+          </Card>
         </div>
       </div>
     </div>
   );
 
-  const renderPaymentFlow = () => {
-    if (paymentStep === 0) return renderDashboard();
-    
+  const PaymentFlow = () => {
+    // Step 1: Scan or ID Entry
     if (paymentStep === 1) {
       return (
         <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
-          <div className="flex items-center justify-between mb-6">
-             <button onClick={resetFlow} className="p-2 hover:bg-slate-800 rounded-full text-slate-400"><X /></button>
-             <h2 className="text-xl font-bold text-white">{method === 'scan' ? 'Scan Merchant QR' : 'Manual Entry'}</h2>
-             <div className="w-8"></div>
+          <div className="flex items-center justify-between mb-8">
+            <button onClick={resetFlow} className="p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+            <h2 className="text-xl font-bold text-white">{method === 'scan' ? 'Scan to Pay' : 'Enter Receiver Details'}</h2>
+            <div className="w-9"></div>
           </div>
 
           {method === 'scan' ? (
-            <div className="relative aspect-square bg-black rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl group">
-              <div className="absolute inset-0 bg-slate-900 flex items-center justify-center">
-                 <div className="w-64 h-64 border-2 border-indigo-500/50 rounded-2xl relative">
-                    <div className="absolute inset-0 border-2 border-indigo-400 rounded-2xl animate-pulse"></div>
-                    <div className="absolute top-0 left-0 w-full h-0.5 bg-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.8)] animate-scan"></div>
-                    <QrCode className="w-full h-full p-12 text-slate-800" />
-                 </div>
+            <div className="space-y-6">
+              <div className="relative aspect-square bg-slate-900 rounded-[2.5rem] overflow-hidden border border-slate-800 shadow-2xl group ring-1 ring-slate-800">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(79,70,229,0.1),transparent)]"></div>
+                <div className="absolute inset-0 flex items-center justify-center p-12">
+                   <div className="w-full h-full border-2 border-dashed border-indigo-500/30 rounded-3xl relative">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500 shadow-[0_0_20px_rgba(79,70,229,0.8)] animate-scan-line"></div>
+                      <QrCode className="w-full h-full p-12 text-slate-800 opacity-50" />
+                   </div>
+                </div>
+                <div className="absolute bottom-8 left-8 right-8">
+                   <button 
+                     onClick={handleScanSuccess}
+                     className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/40 hover:bg-indigo-500 transition-all"
+                   >
+                     <Camera className="w-5 h-5" /> Simulate QR Scan
+                   </button>
+                </div>
               </div>
-              <div className="absolute bottom-8 left-0 right-0 px-8">
-                 <button 
-                   onClick={handleScanSuccess}
-                   className="w-full py-4 bg-indigo-600/90 backdrop-blur-md text-white font-bold rounded-xl flex items-center justify-center gap-2"
-                 >
-                   <Camera className="w-5 h-5" /> Simulate Scan
-                 </button>
-              </div>
+              <p className="text-center text-slate-500 text-sm">Align QR code within the frame</p>
             </div>
           ) : (
-            <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl">
+            <Card className="p-8">
               <div className="w-16 h-16 bg-purple-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <User className="w-8 h-8 text-purple-400" />
               </div>
               <form onSubmit={handleIdSubmit} className="space-y-6">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Receiver UPI ID</label>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Receiver UPI ID</label>
                   <input 
                     autoFocus
                     type="text" 
-                    placeholder="name@bank"
+                    placeholder="username@bank"
                     value={upiId}
                     onChange={(e) => setUpiId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl py-4 px-6 text-xl text-white focus:outline-none focus:border-purple-500 transition-colors"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-2xl py-4 px-6 text-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all placeholder:text-slate-700"
                   />
                 </div>
                 <button 
                   disabled={!upiId.includes('@')}
-                  className="w-full py-4 bg-purple-600 disabled:opacity-50 hover:bg-purple-500 text-white font-bold rounded-xl transition-all"
+                  className="w-full py-4 bg-purple-600 disabled:opacity-30 hover:bg-purple-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-purple-600/20"
                 >
-                  Verify & Continue
+                  Verify Recipient
                 </button>
               </form>
-            </div>
+            </Card>
           )}
         </div>
       );
     }
 
+    // Step 2: Amount Entry
     if (paymentStep === 2) {
       return (
-        <div className="max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
-          <div className="flex items-center gap-4 mb-8 p-4 bg-slate-950 rounded-2xl border border-slate-800">
-            <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold">
-              {recipient[0].toUpperCase()}
-            </div>
-            <div>
-              <p className="text-sm text-slate-400">Paying to</p>
-              <p className="font-bold text-white">{recipient}</p>
-            </div>
+        <div className="max-w-md mx-auto animate-in slide-in-from-bottom-6 duration-400">
+          <div className="flex items-center justify-between mb-8">
+            <button onClick={() => setPaymentStep(1)} className="p-2 bg-slate-800 rounded-full text-slate-400"><ArrowRight className="w-5 h-5 rotate-180" /></button>
+            <h2 className="text-xl font-bold text-white">Payment Amount</h2>
+            <div className="w-9"></div>
           </div>
-          
-          <h2 className="text-2xl font-bold text-white mb-6">Enter Amount</h2>
-          <div className="relative mb-8">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-3xl">₹</span>
-            <input 
-              type="number" 
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-2xl py-6 pl-12 pr-6 text-4xl font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors"
-            />
-          </div>
-          <button 
-            onClick={handlePay}
-            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-bold rounded-2xl transition-all shadow-xl shadow-indigo-600/20"
-          >
-            Pay Securely (PQC)
-          </button>
+
+          <Card className="p-8">
+            <div className="flex items-center gap-4 mb-8 p-4 bg-slate-950 rounded-2xl border border-slate-800">
+              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
+                {recipient[0].toUpperCase()}
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Paying to</p>
+                <p className="font-bold text-white truncate max-w-[200px]">{recipient}</p>
+              </div>
+            </div>
+            
+            <div className="relative mb-8 group">
+              <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 text-3xl font-light">₹</span>
+              <input 
+                type="number" 
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-3xl py-10 pl-14 pr-6 text-5xl font-bold text-white focus:outline-none focus:border-indigo-500 transition-all text-center"
+              />
+            </div>
+
+            <button 
+              onClick={() => setPaymentStep(3)}
+              className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-bold rounded-2xl transition-all shadow-xl shadow-indigo-600/20"
+            >
+              Continue Securely
+            </button>
+          </Card>
         </div>
       );
     }
 
+    // Step 3: Biometric Auth
     if (paymentStep === 3) {
       return (
-        <div className="max-w-xl mx-auto space-y-8 animate-in fade-in duration-500">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-indigo-400" />
-                Hybrid PQC Signing Layer
-              </h2>
-              <div className="flex gap-2">
-                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse delay-75"></span>
-                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse delay-150"></span>
+        <div className="max-w-md mx-auto text-center animate-in zoom-in-95 duration-400">
+          <div className="mb-12">
+            <div className="w-24 h-24 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 relative group cursor-pointer" onClick={handleAuthSuccess}>
+              <Fingerprint className="w-12 h-12 text-indigo-400 group-hover:scale-110 transition-transform" />
+              <div className="absolute inset-0 border-2 border-indigo-500/30 rounded-full animate-ping scale-75 opacity-20"></div>
+            </div>
+            <h2 className="text-2xl font-bold text-white">Authorize Transaction</h2>
+            <p className="text-slate-400 mt-2">Tap fingerprint sensor to sign request</p>
+          </div>
+
+          <Card className="p-6 text-left">
+            <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-800">
+              <span className="text-slate-400 text-sm">Amount</span>
+              <span className="text-white font-bold text-lg">₹{amount}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400 text-sm">Security Policy</span>
+              <Badge color="green">PQC-Hybrid enforced</Badge>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // Step 4: PQC Signing (Executing)
+    if (paymentStep === 4) {
+      return (
+        <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500">
+          <Card className="p-1">
+            <div className="h-1 bg-indigo-500 transition-all duration-300 rounded-full" style={{ width: `${progress}%` }}></div>
+          </Card>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="p-8 flex flex-col justify-center items-center text-center bg-indigo-500/5 border-indigo-500/20">
+              <div className="relative mb-8">
+                 <div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full flex items-center justify-center">
+                    <Cpu className="w-12 h-12 text-indigo-400 animate-pulse" />
+                 </div>
+                 <svg className="absolute top-0 left-0 w-32 h-32 -rotate-90">
+                    <circle 
+                      cx="64" cy="64" r="60" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="4" 
+                      className="text-indigo-500"
+                      strokeDasharray="377"
+                      strokeDashoffset={377 - (377 * progress / 100)}
+                    />
+                 </svg>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">PQC Signing Engine</h3>
+              <p className="text-slate-400 text-sm">Generating dual-layer signatures for maximum longevity.</p>
+            </Card>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 overflow-hidden flex flex-col h-[380px]">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <Activity className="w-3 h-3" /> Live Transaction Logs
+                </h4>
+              </div>
+              <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
+                {logs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-3 p-3 bg-slate-950/50 rounded-xl border border-slate-800/50 animate-in slide-in-from-left-4 duration-300">
+                    <div className={`mt-0.5 p-1 rounded-md ${
+                      log.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-indigo-500/10 text-indigo-400'
+                    }`}>
+                      {log.type === 'success' ? <CheckCircle2 className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-bold truncate ${log.type === 'success' ? 'text-green-400' : 'text-slate-200'}`}>
+                        {log.message}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-mono mt-0.5 flex justify-between items-center">
+                        <span>{log.meta}</span>
+                        <span>{log.time}</span>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div className="h-full flex items-center justify-center text-slate-600 text-sm italic">
+                    Initializing...
+                  </div>
+                )}
               </div>
             </div>
+          </div>
+        </div>
+      );
+    }
+  };
 
-            <div className="space-y-4 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-              {logs.map((log) => (
-                <div key={log.id} className="flex items-start gap-4 animate-in slide-in-from-left duration-300">
-                  <div className={`mt-1 p-1 rounded-md ${
-                    log.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {log.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium ${log.type === 'success' ? 'text-green-400' : 'text-slate-300'}`}>
-                      {log.message}
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-mono">{log.time}</p>
-                  </div>
+  const SuccessView = () => (
+    <div className="max-w-md mx-auto text-center animate-in zoom-in-95 duration-500">
+      <Card className="p-10 border-green-500/30">
+        <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(34,197,94,0.1)]">
+          <CheckCircle2 className="w-10 h-10 text-green-400" />
+        </div>
+        <h2 className="text-3xl font-bold text-white mb-2">Payment Sent</h2>
+        <p className="text-slate-400 mb-8">
+          ₹{amount} successfully sent to<br/><span className="text-white font-medium">{recipient}</span>
+        </p>
+        
+        <div className="bg-slate-950 rounded-2xl p-5 mb-8 text-left border border-slate-800 space-y-3">
+           <div className="flex justify-between items-center">
+             <span className="text-xs text-slate-500">Protection Layer</span>
+             <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">Dilithium-Hybrid</span>
+           </div>
+           <div className="flex justify-between items-center">
+             <span className="text-xs text-slate-500">Auth Method</span>
+             <span className="text-xs text-slate-300 font-medium flex items-center gap-1">
+               <Fingerprint className="w-3 h-3" /> Biometric
+             </span>
+           </div>
+           <div className="flex justify-between items-center">
+             <span className="text-xs text-slate-500">Transaction ID</span>
+             <span className="text-xs text-slate-500 font-mono">TXN-{Math.random().toString(36).substr(2, 9).toUpperCase()}</span>
+           </div>
+        </div>
+
+        <button 
+          onClick={resetFlow}
+          className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl transition-all border border-slate-700"
+        >
+          Return to Dashboard
+        </button>
+      </Card>
+    </div>
+  );
+
+  const VaultView = () => (
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-500">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <button onClick={resetFlow} className="flex items-center gap-2 text-indigo-400 text-sm font-bold hover:text-indigo-300 transition-colors mb-4">
+            <ArrowRight className="w-4 h-4 rotate-180" /> Back to App
+          </button>
+          <h2 className="text-4xl font-bold text-white">Quantum Resilience</h2>
+          <p className="text-slate-400 mt-2 text-lg">Why legacy cryptography is no longer enough for digital payments.</p>
+        </div>
+        
+        {/* Toggle Bar */}
+        <div className="bg-slate-900 border border-slate-800 p-1.5 rounded-2xl flex items-center gap-1">
+          <button 
+            onClick={() => setShowComparison(false)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${!showComparison ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            Core Concepts
+          </button>
+          <button 
+            onClick={() => setShowComparison(true)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${showComparison ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            Tech Comparison
+          </button>
+        </div>
+      </header>
+
+      {!showComparison ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-500">
+          <section className="space-y-4">
+            <Card className="p-8 border-amber-500/20 bg-amber-500/5">
+              <div className="w-12 h-12 bg-amber-500/20 rounded-xl flex items-center justify-center mb-6">
+                <AlertTriangle className="w-6 h-6 text-amber-500" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-3">The "Harvest Now" Threat</h3>
+              <p className="text-slate-400 leading-relaxed text-sm">
+                Adversaries are currently intercepting and storing encrypted payment metadata. Once a Cryptographically Relevant Quantum Computer (CRQC) is built, they will be able to decrypt your transaction history retroactively.
+              </p>
+            </Card>
+            
+            <Card className="p-8">
+              <div className="w-12 h-12 bg-indigo-500/20 rounded-xl flex items-center justify-center mb-6">
+                <RefreshCcw className="w-6 h-6 text-indigo-500" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-3">Crypto Agility</h3>
+              <p className="text-slate-400 leading-relaxed text-sm">
+                Our plugin is designed for seamless transitions. If one lattice-based algorithm is found weak, the SDK can be hot-swapped for a different NIST standard without requiring bank-side core logic changes.
+              </p>
+            </Card>
+          </section>
+
+          <section className="space-y-6">
+            <h3 className="text-lg font-bold text-white px-1">Applied Algorithms</h3>
+            <div className="space-y-4">
+              <div className="flex gap-4 p-5 bg-slate-900 border border-slate-800 rounded-3xl">
+                <div className="w-10 h-10 shrink-0 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800">
+                  <Lock className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">ML-KEM (Kyber)</h4>
+                  <p className="text-xs text-slate-500 mt-1">Used for Key Encapsulation. Ensures that even the communication channel between your app and the bank is quantum-safe.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-5 bg-slate-900 border border-slate-800 rounded-3xl">
+                <div className="w-10 h-10 shrink-0 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800">
+                  <Shield className="w-5 h-5 text-purple-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">ML-DSA (Dilithium)</h4>
+                  <p className="text-xs text-slate-500 mt-1">Primary signature algorithm. Provides the mathematical proof that the payment request was authorized by you.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-5 bg-slate-900 border border-slate-800 rounded-3xl opacity-50">
+                <div className="w-10 h-10 shrink-0 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800">
+                  <Zap className="w-5 h-5 text-slate-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">ECDSA (Legacy)</h4>
+                  <p className="text-xs text-slate-500 mt-1">Retained for backward compatibility with current UPI nodes during the transition period.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+          <Card className="p-0 overflow-hidden border-indigo-500/20">
+            <div className="grid grid-cols-3 bg-slate-950 border-b border-slate-800 p-4 font-bold text-xs uppercase tracking-widest text-slate-500">
+               <div>Feature</div>
+               <div>Existing (Legacy)</div>
+               <div className="text-indigo-400">Shield UPI (PQC)</div>
+            </div>
+            
+            <div className="divide-y divide-slate-800/50">
+              {[
+                { label: "Attack Resistance", legacy: "Vulnerable to Shor's", pqc: "Quantum-Resistant", v: true },
+                { label: "HNDL Protection", legacy: "None (Fatal)", pqc: "Enforced", v: true },
+                { label: "Key Strength", legacy: "256-bit ECDSA", pqc: "Lattice-based L3", v: false },
+                { label: "Signature Size", legacy: "Small (64 bytes)", pqc: "Large (2420 bytes)", v: false, note: "Balanced via SDK" },
+                { label: "Security Lifespan", legacy: "Expires ~2030", pqc: "Decades (Agile)", v: false },
+                { label: "Complexity", legacy: "Prime/Elliptic", pqc: "LWE/Lattices", v: false }
+              ].map((row, i) => (
+                <div key={i} className="grid grid-cols-3 p-4 items-center text-sm">
+                   <div className="font-medium text-slate-400">{row.label}</div>
+                   <div className="flex items-center gap-2">
+                      {row.v ? <Skull className="w-3.5 h-3.5 text-red-500/50" /> : <div className="w-3.5" />}
+                      <span className={row.v ? 'text-red-400/80' : 'text-slate-500'}>{row.legacy}</span>
+                   </div>
+                   <div className="flex items-center gap-2 font-bold text-white">
+                      <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
+                      {row.pqc}
+                   </div>
                 </div>
               ))}
             </div>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <Card className="p-6 bg-red-500/5 border-red-500/20">
+                <h4 className="text-red-400 font-bold mb-3 flex items-center gap-2">
+                  <Skull className="w-4 h-4" /> Vulnerability Results
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Legacy UPI apps rely on ECDSA. A quantum computer with ~4000 logical qubits can solve the Elliptic Curve Discrete Logarithm Problem in minutes, effectively breaking all current bank signatures.
+                </p>
+             </Card>
+             <Card className="p-6 bg-green-500/5 border-green-500/20">
+                <h4 className="text-green-400 font-bold mb-3 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4" /> Defense Results
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Shield UPI utilizes Module-Lattice signatures (ML-DSA). These problems are conjectured to be hard for both classical and quantum computers, securing your assets against future compute scaling.
+                </p>
+             </Card>
           </div>
         </div>
-      );
-    }
-
-    return (
-      <div className="max-w-md mx-auto bg-slate-900 border border-green-500/30 rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95 duration-500">
-        <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle2 className="w-12 h-12 text-green-400" />
-        </div>
-        <h2 className="text-3xl font-bold text-white mb-2">Transaction Success</h2>
-        <p className="text-slate-400 mb-8">
-          Sent <strong>₹{amount}</strong> to <strong>{recipient}</strong> securely.
-        </p>
-        <div className="bg-slate-950 rounded-2xl p-4 mb-8 text-left border border-slate-800">
-           <div className="flex justify-between mb-2">
-             <span className="text-xs text-slate-500">Protection</span>
-             <span className="text-xs text-indigo-400 font-bold uppercase tracking-widest">Hybrid Dilithium-L3</span>
-           </div>
-           <div className="flex justify-between">
-             <span className="text-xs text-slate-500">Policy</span>
-             <span className="text-xs text-green-400 font-bold">Fail-Forward Enabled</span>
-           </div>
-        </div>
-        <button 
-          onClick={resetFlow}
-          className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl transition-all"
-        >
-          Finish
-        </button>
-      </div>
-    );
-  };
-
-  const renderInfo = () => (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <section className="bg-slate-900 border border-slate-800 rounded-3xl p-8">
-        <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-          <Info className="w-6 h-6 text-indigo-400" />
-          Quantum Resilient Infrastructure
-        </h2>
-        <p className="text-slate-300 leading-relaxed mb-6">
-          Our UPI Plugin uses a modular SDK approach. Instead of replacing the banking core, we wrap transaction signatures in a post-quantum shield.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-           <div className="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
-              <h3 className="text-indigo-400 font-bold mb-2 text-sm uppercase">Signature 1: ECDSA</h3>
-              <p className="text-slate-400 text-sm">Maintains backward compatibility with all existing UPI apps and bank nodes.</p>
-           </div>
-           <div className="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
-              <h3 className="text-purple-400 font-bold mb-2 text-sm uppercase">Signature 2: Dilithium</h3>
-              <p className="text-slate-400 text-sm">NIST-standard lattice-based signature providing 128-bit quantum security.</p>
-           </div>
-        </div>
-      </section>
+      )}
     </div>
   );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={resetFlow}>
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
-              <Shield className="w-6 h-6 text-white" />
+      {/* Background elements */}
+      <div className="fixed top-0 left-1/4 w-[500px] h-[500px] bg-indigo-600/10 blur-[120px] -z-10 rounded-full animate-pulse"></div>
+      <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-600/10 blur-[120px] -z-10 rounded-full animate-pulse delay-700"></div>
+      <div className="fixed inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none"></div>
+
+      {/* Navbar */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-900">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={resetFlow}>
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/30 group-hover:scale-105 transition-transform">
+              <ShieldCheck className="w-6 h-6 text-white" />
             </div>
             <div>
-               <h1 className="text-lg font-bold text-white leading-tight">PQC UPI</h1>
-               <p className="text-[10px] text-indigo-400 font-bold tracking-widest uppercase">Plugin SDK v1.0</p>
+               <h1 className="text-lg font-bold text-white leading-tight">Shield UPI</h1>
+               <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                  <p className="text-[9px] text-indigo-400 font-bold tracking-[0.2em] uppercase">Post-Quantum SDK</p>
+               </div>
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-4">
-            <button onClick={() => setView('dashboard')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'dashboard' ? 'bg-indigo-600/10 text-indigo-400' : 'text-slate-400 hover:text-white'}`}>Home</button>
-            <button onClick={() => setView('info')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'info' ? 'bg-indigo-600/10 text-indigo-400' : 'text-slate-400 hover:text-white'}`}>Architecture</button>
+          <div className="hidden md:flex items-center gap-2">
+            <button 
+              onClick={() => { resetFlow(); setView('dashboard'); }} 
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'dashboard' ? 'bg-white/5 text-white' : 'text-slate-500 hover:text-white'}`}
+            >
+              Overview
+            </button>
+            <button 
+              onClick={() => setView('vault')} 
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'vault' ? 'bg-white/5 text-white' : 'text-slate-500 hover:text-white'}`}
+            >
+              Vault
+            </button>
+            <div className="w-px h-4 bg-slate-800 mx-2"></div>
+            <button className="p-2 text-slate-500 hover:text-white transition-colors">
+              <History className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-green-500"></div>
-             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Network Secure</span>
+          <div className="p-1 bg-slate-900 border border-slate-800 rounded-full flex items-center gap-3 px-3">
+             <div className="w-6 h-6 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-full border border-white/20"></div>
+             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest hidden sm:inline">User 8292</span>
           </div>
         </div>
       </nav>
 
-      <main className="pt-32 pb-20 px-6">
-        <div className="max-w-6xl mx-auto">
-        {view === 'dashboard' && renderDashboard()}
-        {view === 'payment' && renderPaymentFlow()}
-        {view === 'info' && renderInfo()}</div>
+      {/* Main Content */}
+      <main className="pt-32 pb-24 px-6 max-w-7xl mx-auto">
+        {view === 'dashboard' && <Dashboard />}
+        {view === 'payment' && <PaymentFlow />}
+        {view === 'success' && <SuccessView />}
+        {view === 'vault' && <VaultView />}
       </main>
 
-      <div className="fixed top-0 left-1/4 w-[600px] h-[600px] bg-indigo-600/5 blur-[120px] -z-10 rounded-full"></div>
-      <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-purple-600/5 blur-[120px] -z-10 rounded-full"></div>
+      {/* Footer / Meta */}
+      <footer className="fixed bottom-0 left-0 right-0 py-4 px-8 border-t border-slate-900 bg-slate-950/80 backdrop-blur-md flex justify-between items-center z-40">
+        <div className="flex gap-4">
+           <div className="flex items-center gap-2">
+             <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Gateway Verified</span>
+           </div>
+           <div className="hidden sm:flex items-center gap-2">
+             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">NIST FIPS-203</span>
+           </div>
+        </div>
+        <p className="text-[10px] text-slate-700 font-mono">ENCLAVE_ID: {Math.random().toString(36).substr(2, 6).toUpperCase()}</p>
+      </footer>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes scan {
-          0% { top: 10%; }
-          100% { top: 90%; }
+        @keyframes scan-line {
+          0% { top: 0%; opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { top: 100%; opacity: 0; }
         }
-        .animate-scan {
-          animation: scan 2s linear infinite;
+        .animate-scan-line {
+          animation: scan-line 3s linear infinite;
         }
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.05);
+          background: rgba(15, 23, 42, 0.5);
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #4f46e5;
+          background: rgba(79, 70, 229, 0.3);
           border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(79, 70, 229, 0.5);
+        }
+        @font-face {
+          font-family: 'Geist';
+          src: url('https://cdn.jsdelivr.net/npm/geist@1.0.3/dist/fonts/geist-sans/Geist-Medium.woff2') format('woff2');
+        }
+        body {
+          font-family: 'Geist', sans-serif;
         }
       `}} />
     </div>
