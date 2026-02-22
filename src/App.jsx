@@ -20,9 +20,6 @@ import {
   Keyboard
 } from 'lucide-react';
 
-<div className="bg-red-500 text-white p-10 text-4xl">
-  TAILWIND TEST
-</div>
 const usePQCPlugin = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -35,11 +32,9 @@ const usePQCPlugin = () => {
     setIsProcessing(true);
     setLogs([]);
     
-    // Stage 1: Initiation (Already completed via scan/input)
     addLog(`Initiating Secure Tunnel to ${recipient}...`, "info");
     await new Promise(r => setTimeout(r, 600));
     
-    // Stage 2: SDK Execution
     addLog("PQC Hybrid SDK Triggered", "success");
     await new Promise(r => setTimeout(r, 600));
     
@@ -52,7 +47,6 @@ const usePQCPlugin = () => {
     addLog("Hybrid Payload Encapsulated (Kyber)...", "success");
     await new Promise(r => setTimeout(r, 500));
 
-    // Stage 3: Server Verification
     addLog("Transmitting to Payment Gateway...", "info");
     await new Promise(r => setTimeout(r, 1000));
     
@@ -71,10 +65,10 @@ const usePQCPlugin = () => {
 };
 
 export default function App() {
-  const [view, setView] = useState('dashboard'); // dashboard, payment, info
+  const [view, setView] = useState('dashboard');
   const { processPayment, isProcessing, logs } = usePQCPlugin();
-  const [paymentStep, setPaymentStep] = useState(0); // 0: select method, 1: scan/input, 2: enter amount, 3: processing, 4: success
-  const [method, setMethod] = useState(null); // 'scan' or 'id'
+  const [paymentStep, setPaymentStep] = useState(0);
+  const [method, setMethod] = useState(null);
   const [upiId, setUpiId] = useState('');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('500.00');
@@ -173,9 +167,8 @@ export default function App() {
   );
 
   const renderPaymentFlow = () => {
-    // Step 0: Choose Method (Handled in Dashboard, but useful as fallback)
     if (paymentStep === 0) return renderDashboard();
-    // Step 1: Interaction (Scan or Input)
+    
     if (paymentStep === 1) {
       return (
         <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
@@ -187,7 +180,6 @@ export default function App() {
 
           {method === 'scan' ? (
             <div className="relative aspect-square bg-black rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl group">
-              {/* Simulated Camera View */}
               <div className="absolute inset-0 bg-slate-900 flex items-center justify-center">
                  <div className="w-64 h-64 border-2 border-indigo-500/50 rounded-2xl relative">
                     <div className="absolute inset-0 border-2 border-indigo-400 rounded-2xl animate-pulse"></div>
@@ -234,7 +226,6 @@ export default function App() {
       );
     }
 
-    // Step 2: Enter Amount
     if (paymentStep === 2) {
       return (
         <div className="max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
@@ -268,7 +259,6 @@ export default function App() {
       );
     }
 
-    // Step 3: Processing (PQC Logs)
     if (paymentStep === 3) {
       return (
         <div className="max-w-xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -307,7 +297,6 @@ export default function App() {
       );
     }
 
-    // Step 4: Success
     return (
       <div className="max-w-md mx-auto bg-slate-900 border border-green-500/30 rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95 duration-500">
         <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -363,7 +352,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
-      {/* Top Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={resetFlow}>
@@ -388,7 +376,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Main Container */}
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-6xl mx-auto">
         {view === 'dashboard' && renderDashboard()}
@@ -396,7 +383,6 @@ export default function App() {
         {view === 'info' && renderInfo()}</div>
       </main>
 
-      {/* Decor */}
       <div className="fixed top-0 left-1/4 w-[600px] h-[600px] bg-indigo-600/5 blur-[120px] -z-10 rounded-full"></div>
       <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-purple-600/5 blur-[120px] -z-10 rounded-full"></div>
 
